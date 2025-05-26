@@ -31,23 +31,35 @@ jobs:
 
       - name: Build executable with PyInstaller
         run: |
-          $MediaPipeRootPath = (Get-Command python).Module.ModuleBase | Split-Path | Join-Path -ChildPath "Lib\site-packages\mediapipe"
+          # Get the Python site-packages directory
+          $SitePackagesPath = python -c "import site; print(site.getsitepackages()[0])"
+          Write-Output "Python Site Packages Path: $SitePackagesPath"
+
+          # Construct the path to the mediapipe package
+          $MediaPipeRootPath = Join-Path -Path $SitePackagesPath -ChildPath "mediapipe"
+          Write-Output "MediaPipe Root Path: $MediaPipeRootPath"
+
+          # Check if MediaPipe path exists
+          if (-not (Test-Path $MediaPipeRootPath)) {
+            Write-Error "MediaPipe path does not exist: $MediaPipeRootPath"
+            # Attempt to list contents of site-packages for debugging
+            Write-Output "Listing contents of site-packages ($SitePackagesPath):"
+            Get-ChildItem -Path $SitePackagesPath | ForEach-Object { Write-Output $_.Name }
+            exit 1
+          }
+          
           $AddDataSource = Join-Path -Path $MediaPipeRootPath -ChildPath "modules\solution_base\*"
           $AddDataDest = "mediapipe\modules\solution_base" # Destination within the bundled app
           
-          # Construct the value for --add-data as "SOURCE;DESTINATION"
           $FullAddDataValue = "{0};{1}" -f $AddDataSource, $AddDataDest
           
-          Write-Output "MediaPipe Root Path: $MediaPipeRootPath"
           Write-Output "Calculated --add-data source: $AddDataSource"
           Write-Output "Calculated --add-data destination: $AddDataDest"
           Write-Output "Full value for --add-data: $FullAddDataValue"
 
-          # Ensure the pyinstaller command arguments are clearly distinct.
-          # The value for --add-data is quoted ("$FullAddDataValue") to handle potential spaces in paths.
           pyinstaller --name GestureFlow --onefile --noconsole --icon=NONE --add-data "$FullAddDataValue" main_app.py
         shell: pwsh
-
+      
       - name: Get current date for release tag
         id: date
         run: echo "TAG_NAME=$(Get-Date -Format 'yyyyMMddHHmmss')" >> $env:GITHUB_OUTPUT
