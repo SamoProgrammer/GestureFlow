@@ -1,0 +1,67 @@
+# .github/workflows/build_release.yml
+
+name: Build and Release Standalone Executable
+
+on:
+  push:
+    branches:
+      - main # Or your default branch, e.g., master
+
+permissions:
+  contents: write # Required to create releases and upload assets
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest # Use a Windows runner for .exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # Specify a Python version compatible with your dependencies
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable with PyInstaller
+        run: |
+          # The --add-data flag is crucial for MediaPipe. 
+          # It copies the mediapipe solution_base models.
+          # The path separator might need adjustment based on where mediapipe installs its data.
+          # This assumes standard site-packages layout.
+          # Get mediapipe path dynamically
+          $MediaPipePath = (Get-Command python).Module.ModuleBase | Split-Path | Join-Path -ChildPath "Lib\site-packages\mediapipe"
+          Write-Output "MediaPipe Path: $MediaPipePath"
+          pyinstaller --name GestureFlow `
+                      --onefile `
+                      --noconsole `
+                      --icon=NONE ` # Add an .ico file here if you have one, e.g., --icon=assets/app_icon.ico
+                      --add-data "$($MediaPipePath)\modules\solution_base\*;mediapipe\modules\solution_base" `
+                      main_app.py
+        shell: pwsh # Use PowerShell for variable expansion
+
+      - name: Get current date for release tag
+        id: date
+        run: echo "TAG_NAME=$(Get-Date -Format 'yyyyMMddHHmmss')" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2 # A popular action for creating releases
+        with:
+          tag_name: ${{ steps.date.outputs.TAG_NAME }}
+          name: Release ${{ steps.date.outputs.TAG_NAME }}
+          body: |
+            Automated release of GestureFlow.
+            Executable built on commit ${{ github.sha }}.
+          draft: false
+          prerelease: false
+          files: |
+            dist/GestureFlow.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is automatically provided by GitHub
