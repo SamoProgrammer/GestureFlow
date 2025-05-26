@@ -29,23 +29,41 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build executable with PyInstaller
+           - name: Build executable with PyInstaller
         run: |
-          # Get the Python site-packages directory
-          $SitePackagesPath = python -c "import site; print(site.getsitepackages()[0])"
-          Write-Output "Python Site Packages Path: $SitePackagesPath"
+          # Get the Python site-packages directory using sysconfig (more reliable)
+          $SitePackagesPath = python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
+          Write-Output "Python Site Packages Path (from sysconfig): $SitePackagesPath"
 
           # Construct the path to the mediapipe package
           $MediaPipeRootPath = Join-Path -Path $SitePackagesPath -ChildPath "mediapipe"
-          Write-Output "MediaPipe Root Path: $MediaPipeRootPath"
+          Write-Output "Constructed MediaPipe Root Path: $MediaPipeRootPath"
 
           # Check if MediaPipe path exists
           if (-not (Test-Path $MediaPipeRootPath)) {
             Write-Error "MediaPipe path does not exist: $MediaPipeRootPath"
-            # Attempt to list contents of site-packages for debugging
-            Write-Output "Listing contents of site-packages ($SitePackagesPath):"
-            Get-ChildItem -Path $SitePackagesPath | ForEach-Object { Write-Output $_.Name }
-            exit 1
+            Write-Output "Listing contents of site-packages ($SitePackagesPath) for debugging:"
+            Get-ChildItem -Path $SitePackagesPath -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.Name }
+            
+            # Fallback: Try to find mediapipe in common alternative locations if sysconfig was off
+            $PythonExePath = (Get-Command python).Source
+            $PythonDir = Split-Path $PythonExePath
+            $AlternativeSitePackages1 = Join-Path $PythonDir "Lib\site-packages"
+            $AlternativeMediaPipePath1 = Join-Path $AlternativeSitePackages1 "mediapipe"
+            Write-Output "Attempting fallback MediaPipe path 1: $AlternativeMediaPipePath1"
+            if (Test-Path $AlternativeMediaPipePath1) {
+                $MediaPipeRootPath = $AlternativeMediaPipePath1
+                Write-Output "Fallback MediaPipe path 1 found and will be used."
+            } else {
+                 Write-Output "Fallback MediaPipe path 1 not found."
+                 # Add more fallbacks if necessary or specific to GitHub Actions runner structure
+            }
+
+            # Final check after fallbacks
+            if (-not (Test-Path $MediaPipeRootPath)) {
+                Write-Error "MediaPipe path still not found after fallbacks. Exiting."
+                exit 1
+            }
           }
           
           $AddDataSource = Join-Path -Path $MediaPipeRootPath -ChildPath "modules\solution_base\*"
@@ -53,6 +71,7 @@ jobs:
           
           $FullAddDataValue = "{0};{1}" -f $AddDataSource, $AddDataDest
           
+          Write-Output "Using MediaPipe Root Path: $MediaPipeRootPath"
           Write-Output "Calculated --add-data source: $AddDataSource"
           Write-Output "Calculated --add-data destination: $AddDataDest"
           Write-Output "Full value for --add-data: $FullAddDataValue"
