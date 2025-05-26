@@ -31,20 +31,22 @@ jobs:
 
       - name: Build executable with PyInstaller
         run: |
-          # The --add-data flag is crucial for MediaPipe. 
-          # It copies the mediapipe solution_base models.
-          # The path separator might need adjustment based on where mediapipe installs its data.
-          # This assumes standard site-packages layout.
-          # Get mediapipe path dynamically
-          $MediaPipePath = (Get-Command python).Module.ModuleBase | Split-Path | Join-Path -ChildPath "Lib\site-packages\mediapipe"
-          Write-Output "MediaPipe Path: $MediaPipePath"
-          pyinstaller --name GestureFlow `
-                      --onefile `
-                      --noconsole `
-                      --icon=NONE ` # Add an .ico file here if you have one, e.g., --icon=assets/app_icon.ico
-                      --add-data "$($MediaPipePath)\modules\solution_base\*;mediapipe\modules\solution_base" `
-                      main_app.py
-        shell: pwsh # Use PowerShell for variable expansion
+          $MediaPipeRootPath = (Get-Command python).Module.ModuleBase | Split-Path | Join-Path -ChildPath "Lib\site-packages\mediapipe"
+          $AddDataSource = Join-Path -Path $MediaPipeRootPath -ChildPath "modules\solution_base\*"
+          $AddDataDest = "mediapipe\modules\solution_base" # Destination within the bundled app
+          
+          # Construct the value for --add-data as "SOURCE;DESTINATION"
+          $FullAddDataValue = "{0};{1}" -f $AddDataSource, $AddDataDest
+          
+          Write-Output "MediaPipe Root Path: $MediaPipeRootPath"
+          Write-Output "Calculated --add-data source: $AddDataSource"
+          Write-Output "Calculated --add-data destination: $AddDataDest"
+          Write-Output "Full value for --add-data: $FullAddDataValue"
+
+          # Ensure the pyinstaller command arguments are clearly distinct.
+          # The value for --add-data is quoted ("$FullAddDataValue") to handle potential spaces in paths.
+          pyinstaller --name GestureFlow --onefile --noconsole --icon=NONE --add-data "$FullAddDataValue" main_app.py
+        shell: pwsh
 
       - name: Get current date for release tag
         id: date
