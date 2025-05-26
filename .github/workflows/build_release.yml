@@ -31,61 +31,26 @@ jobs:
 
       - name: Build executable with PyInstaller
         run: |
-          # Get the Python site-packages directory using sysconfig (more reliable)
-          $SitePackagesPath = python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
-          Write-Output "Python Site Packages Path (from sysconfig): $SitePackagesPath"
-
-          # Construct the path to the mediapipe package
-          $MediaPipeRootPath = Join-Path -Path $SitePackagesPath -ChildPath "mediapipe"
-          Write-Output "Constructed MediaPipe Root Path: $MediaPipeRootPath"
-
-          # Check if MediaPipe path exists
-          if (-not (Test-Path $MediaPipeRootPath)) {
-            Write-Error "MediaPipe path does not exist: $MediaPipeRootPath"
-            Write-Output "Listing contents of site-packages ($SitePackagesPath) for debugging:"
-            Get-ChildItem -Path $SitePackagesPath -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.Name }
-            
-            # Fallback: Try to find mediapipe in common alternative locations if sysconfig was off
-            $PythonExePath = (Get-Command python).Source
-            $PythonDir = Split-Path $PythonExePath
-            $AlternativeSitePackages1 = Join-Path $PythonDir "Lib\site-packages"
-            $AlternativeMediaPipePath1 = Join-Path $AlternativeSitePackages1 "mediapipe"
-            Write-Output "Attempting fallback MediaPipe path 1: $AlternativeMediaPipePath1"
-            if (Test-Path $AlternativeMediaPipePath1) {
-                $MediaPipeRootPath = $AlternativeMediaPipePath1
-                Write-Output "Fallback MediaPipe path 1 found and will be used."
-            } else {
-                 Write-Output "Fallback MediaPipe path 1 not found."
-                 # Add more fallbacks if necessary or specific to GitHub Actions runner structure
-            }
-
-            # Final check after fallbacks
-            if (-not (Test-Path $MediaPipeRootPath)) {
-                Write-Error "MediaPipe path still not found after fallbacks. Exiting."
-                exit 1
-            }
-          }
+          Write-Output "Attempting to build with PyInstaller using --collect-all for mediapipe."
           
-          $AddDataSource = Join-Path -Path $MediaPipeRootPath -ChildPath "modules\solution_base\*"
-          $AddDataDest = "mediapipe\modules\solution_base" # Destination within the bundled app
-          
-          $FullAddDataValue = "{0};{1}" -f $AddDataSource, $AddDataDest
-          
-          Write-Output "Using MediaPipe Root Path: $MediaPipeRootPath"
-          Write-Output "Calculated --add-data source: $AddDataSource"
-          Write-Output "Calculated --add-data destination: $AddDataDest"
-          Write-Output "Full value for --add-data: $FullAddDataValue"
+          # Simpler PyInstaller command, relying on its collection capabilities for mediapipe.
+          # This flag tells PyInstaller to find the 'mediapipe' package and include all its 
+          # associated files (Python modules, data files like .tflite models, binaries).
+          pyinstaller --name GestureFlow `
+                      --onefile `
+                      --noconsole `
+                      --icon=NONE ` # Add an .ico file here if you have one, e.g., --icon=assets/app_icon.ico
+                      --collect-all mediapipe `
+                      main_app.py
+        shell: pwsh # Using PowerShell
 
-          pyinstaller --name GestureFlow --onefile --noconsole --icon=NONE --add-data "$FullAddDataValue" main_app.py
-        shell: pwsh
-      
       - name: Get current date for release tag
         id: date
         run: echo "TAG_NAME=$(Get-Date -Format 'yyyyMMddHHmmss')" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
       - name: Create Release and Upload Asset
-        uses: softprops/action-gh-release@v2 # A popular action for creating releases
+        uses: softprops/action-gh-release@v2 
         with:
           tag_name: ${{ steps.date.outputs.TAG_NAME }}
           name: Release ${{ steps.date.outputs.TAG_NAME }}
@@ -97,4 +62,4 @@ jobs:
           files: |
             dist/GestureFlow.exe
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is automatically provided by GitHub
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
